@@ -8,7 +8,6 @@
 
 	/* Begin PBXBuildFile section */
 			8496B8D12E7FE000005270F1 /* WhipTipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496B8D02E7FE000005270F1 /* WhipTipApp.swift */; };
-			D00000012E800000005270F1 /* Dummy.swift in Sources */ = {isa = PBXBuildFile; fileRef = D00000022E800000005270F1 /* Dummy.swift */; };
 
 	/* End PBXBuildFile section */
 
@@ -25,7 +24,7 @@
 /* Begin PBXFileReference section */
 		8496B8992E7FCD10005270F1 /* WhipTip.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WhipTip.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8496B8D02E7FE000005270F1 /* WhipTipApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhipTipApp.swift; sourceTree = "<group>"; };
-		D00000022E800000005270F1 /* Dummy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dummy.swift; sourceTree = "<group>"; };
+
 
 /* End PBXFileReference section */
 
@@ -36,7 +35,6 @@
 			sourceTree = "<group>";
 			children = (
 				8496B8D02E7FE000005270F1 /* WhipTipApp.swift */,
-				D00000022E800000005270F1 /* Dummy.swift */,
 
 			);
 		};
@@ -165,7 +163,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				8496B8D12E7FE000005270F1 /* WhipTipApp.swift in Sources */,
-				D00000012E800000005270F1 /* Dummy.swift in Sources */,
 
 			);
 			runOnlyForDeploymentPostprocessing = 0;

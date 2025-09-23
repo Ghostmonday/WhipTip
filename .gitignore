@@ -28,3 +28,7 @@ fastlane/test_output
 /*.dSYM.zip
 /*.dSYM
 
+# Secrets
+Secrets.plist
+*.private.xcconfig
+

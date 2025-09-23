@@ -446,7 +446,8 @@ class APIService: ObservableObject {
     
     private let session: URLSession
     private let networkMonitor = NetworkMonitor()
-    private let deepSeekKey = Bundle.main.object(forInfoDictionaryKey: "DEEPSEEK_API_KEY") as? String
+    private let deepSeekKey: String = Bundle.main.object(forInfoDictionaryKey: "DEEPSEEK_API_KEY") as? String ?? ""
+    private let baseURL = URL(string: "https://api.deepseek.com/v1/chat/completions")!
     
     init() {
         let configuration = URLSessionConfiguration.default
@@ -464,55 +465,105 @@ class APIService: ObservableObject {
         }
     }
     
+    // Internal DTOs
+    private struct ChatMessageDTO: Codable { let role: String; let content: String }
+    private struct ChatRequestDTO: Codable { let model: String; let messages: [ChatMessageDTO]; let stream: Bool }
+    private struct ChatChoiceDTO: Codable { struct Message: Codable { let role: String; let content: String }; let message: Message }
+    private struct ChatResponseDTO: Codable { let choices: [ChatChoiceDTO] }
+
+    enum StreamPiece { case token(String); case done }
+
+    /// Unified non-stream request returning full content
+    private func performChat(model: String, messages: [ChatMessageDTO]) async throws -> String {
+        try checkNetworkConnection()
+        guard !deepSeekKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw APIError.missingCredentials }
+        var request = URLRequest(url: baseURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(deepSeekKey)", forHTTPHeaderField: "Authorization")
+        let body = ChatRequestDTO(model: model, messages: messages, stream: false)
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard 200..<300 ~= http.statusCode else { throw APIError.serverError(http.statusCode) }
+        let decoded = try JSONDecoder().decode(ChatResponseDTO.self, from: data)
+        guard let content = decoded.choices.first?.message.content else { throw APIError.invalidResponse }
+        return content
+    }
+
+    /// Streaming request emitting partial tokens (SSE style)
+    func streamChat(model: String, messages: [ChatMessageDTO]) async throws -> AsyncStream<StreamPiece> {
+        try checkNetworkConnection()
+        guard !deepSeekKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw APIError.missingCredentials }
+        var request = URLRequest(url: baseURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(deepSeekKey)", forHTTPHeaderField: "Authorization")
+        let body = ChatRequestDTO(model: model, messages: messages, stream: true)
+        request.httpBody = try JSONEncoder().encode(body)
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { throw APIError.invalidResponse }
+        return AsyncStream { continuation in
+            Task {
+                do {
+                    for try await line in bytes.lines {
+                        if line.hasPrefix("data: ") {
+                            let payload = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if payload == "[DONE]" { continuation.yield(.done); break }
+                            guard let data = payload.data(using: .utf8) else { continue }
+                            if let chunk = try? JSONDecoder().decode(ChatResponseDTO.self, from: data),
+                               let token = chunk.choices.first?.message.content, !token.isEmpty {
+                                continuation.yield(.token(token))
+                            }
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish()
+                }
+            }
+        }
+    }
+
     func sendOnboardingMessage(
         userInput: String,
         sessionId: String,
-        turnNumber: Int
+        turnNumber: Int,
+        useReasoning: Bool = false,
+        streaming: Bool = false
     ) async throws -> OnboardingResponse {
-        try checkNetworkConnection()
-        guard let key = deepSeekKey, !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw APIError.missingCredentials }
-        guard let url = URL(string: "https://api.deepseek.com/v1/chat/completions") else { throw APIError.invalidURL }
-        struct ChatMessage: Codable { let role: String; let content: String }
-        struct ChatRequest: Codable { let model: String; let messages: [ChatMessage]; let stream: Bool }
-        struct ChatChoice: Codable { struct Message: Codable { let role: String; let content: String }; let message: Message }
-        struct ChatResponse: Codable { let choices: [ChatChoice] }
-        let systemPrompt = "You are WhipTip's onboarding assistant. Collect restaurant tip splitting rules succinctly."
+        let systemPrompt = "You are WhipTip's onboarding assistant. Collect restaurant tip splitting rules succinctly." + (useReasoning ? " Focus on step-by-step reasoning then produce a concise final answer." : "")
+        let model = useReasoning ? "deepseek-reasoner" : "deepseek-chat"
         let messages = [
-            ChatMessage(role: "system", content: systemPrompt),
-            ChatMessage(role: "user", content: userInput)
+            ChatMessageDTO(role: "system", content: systemPrompt),
+            ChatMessageDTO(role: "user", content: userInput)
         ]
-        let body = ChatRequest(model: "deepseek-chat", messages: messages, stream: false)
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONEncoder().encode(body)
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
-            guard 200..<300 ~= http.statusCode else { throw APIError.serverError(http.statusCode) }
-            if let decoded = try? JSONDecoder().decode(ChatResponse.self, from: data),
-               let content = decoded.choices.first?.message.content {
-                // Extremely lightweight heuristic: after 5 turns, mark complete.
-                return OnboardingResponse(
-                    status: turnNumber < 5 ? .inProgress : .complete,
-                    message: content.trimmingCharacters(in: .whitespacesAndNewlines),
-                    clarificationNeeded: turnNumber < 5,
-                    template: turnNumber >= 5 ? createSampleTemplate() : nil,
-                    suggestedQuestions: turnNumber < 5 ? ["We pool everything", "Each person keeps their own"] : nil
-                )
+        var content: String = ""
+        if streaming {
+            // Accumulate streamed tokens
+            let stream = try await streamChat(model: model, messages: messages)
+            for await piece in stream {
+                switch piece {
+                case .token(let t): content += t
+                case .done: break
+                }
             }
-        } catch {
-            // Network or decoding error -> fall back to mock but surface if non-network
-            if !error.isNetworkError { throw error }
+            if content.isEmpty { content = "(No content received)" }
+        } else {
+            do {
+                content = try await performChat(model: model, messages: messages).trimmingCharacters(in: .whitespacesAndNewlines)
+            } catch {
+                if error.isNetworkError == false { throw error }
+                content = "Let me help you set up your rules." // fallback
+            }
         }
-        // Fallback mock path if decoding failed
         return OnboardingResponse(
             status: turnNumber < 5 ? .inProgress : .complete,
-            message: "Let me help you set up your rules.",
+            message: content,
             clarificationNeeded: turnNumber < 5,
             template: turnNumber >= 5 ? createSampleTemplate() : nil,
-            suggestedQuestions: ["We pool everything", "Each person keeps their own"]
+            suggestedQuestions: turnNumber < 5 ? ["We pool everything", "Each person keeps their own"] : nil
         )
     }
     
