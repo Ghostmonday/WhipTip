@@ -1,0 +1,30 @@
+# Xcode / Swift
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+
+# SwiftPM
+.build/
+
+# CocoaPods / Carthage / etc (not used but future-proof)
+Pods/
+Carthage/
+
+# User settings
+.DS_Store
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Archives
+*.xcarchive
+
+# Generated
+/*.ipa
+/*.dSYM.zip
+/*.dSYM
+
