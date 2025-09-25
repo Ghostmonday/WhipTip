@@ -1,0 +1,23 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build WhipTip (iPhone 16 Pro iOS 18.3)",
+			"type": "shell",
+			"command": "xcodebuild",
+			"args": [
+				"-scheme",
+				"WhipTip",
+				"-project",
+				"/Users/admin/Documents/project whiptips/WhipTip/WhipTip.xcodeproj",
+				"-destination",
+				"platform=iOS Simulator,id=2A359B20-C628-4F65-AECF-E2383B80822E",
+				"build"
+			],
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		}
+	]
+}

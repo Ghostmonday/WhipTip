@@ -7,6 +7,18 @@ import Network
 import UIKit
 import StoreKit  // Added for StoreKit 2
 
+// MARK: - Unified Currency Formatting (Top-level extension)
+extension Double {
+    /// Localized currency string for the current locale, with optional override for `currencyCode`.
+    func currencyFormatted(locale: Locale = .current, currencyCode: String? = nil) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.locale = locale
+        if let code = currencyCode { formatter.currencyCode = code }
+        return formatter.string(from: NSNumber(value: self)) ?? String(format: "%.2f", self)
+    }
+}
+
 // MARK: - [Previous Domain Models remain unchanged - keeping existing code]
 // [All existing TipTemplate, TipRules, Participant, etc. structs remain the same]
 
@@ -736,11 +748,23 @@ class APIService: ObservableObject {
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         let body = ChatRequestDTO(model: model, messages: messages, stream: false)
         request.httpBody = try JSONEncoder().encode(body)
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
+            let userCount = messages.filter { $0.role == "user" }.count
+            print("[DEBUG] DeepSeek request: model=\(model), stream=false, messages=\(messages.count), userMsgs=\(userCount)")
+        }
+        #endif
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard 200..<300 ~= http.statusCode else { throw APIError.serverError(http.statusCode) }
         let decoded = try JSONDecoder().decode(ChatResponseDTO.self, from: data)
         guard let content = decoded.choices.first?.message.content else { throw APIError.invalidResponse }
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
+            let preview = String(content.prefix(120))
+            print("[DEBUG] DeepSeek response (first 120 chars): \(preview)")
+        }
+        #endif
         return content
     }
 
@@ -759,6 +783,12 @@ class APIService: ObservableObject {
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         let body = ChatRequestDTO(model: model, messages: messages, stream: true)
         request.httpBody = try JSONEncoder().encode(body)
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
+            let userCount = messages.filter { $0.role == "user" }.count
+            print("[DEBUG] DeepSeek streaming request: model=\(model), stream=true, messages=\(messages.count), userMsgs=\(userCount)")
+        }
+        #endif
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { throw APIError.invalidResponse }
         return AsyncStream { continuation in
@@ -939,6 +969,34 @@ struct WhipTipApp: App {
     @StateObject private var templateManager = TemplateManager()
     @StateObject private var apiService = APIService()
     
+    #if DEBUG
+    @State private var showDebugInfoAlert: Bool = false
+    @State private var debugInfoMessage: String = ""
+    #endif
+    
+    #if DEBUG
+    init() {
+        let key = (Bundle.main.infoDictionary?["DEEPSEEK_API_KEY"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let showAlertPref = (UserDefaults.standard.object(forKey: "DebugShowAPIKeyAlert") as? Bool) ?? true
+        if !key.isEmpty {
+            let prefix = String(key.prefix(6))
+            print("✅ DeepSeek key found: \(prefix)…")
+            // Initialize alert state for Debug builds
+            self._debugInfoMessage = State(initialValue: "✅ DeepSeek key found: \(prefix)…")
+            // Show once if enabled in Debug settings
+            self._showDebugInfoAlert = State(initialValue: showAlertPref)
+        } else {
+            print("❌ DeepSeek key missing from Info.plist")
+            // Initialize alert state for Debug builds
+            self._debugInfoMessage = State(initialValue: "❌ DeepSeek key missing from Info.plist")
+            // Show once if enabled in Debug settings
+            self._showDebugInfoAlert = State(initialValue: showAlertPref)
+        }
+        // If we decided to show at launch, flip the flag off so it won't reappear until reset
+        if showDebugInfoAlert { UserDefaults.standard.set(false, forKey: "DebugShowAPIKeyAlert") }
+    }
+    #endif
+    
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -950,6 +1008,16 @@ struct WhipTipApp: App {
                     // Update subscription status on launch
                     await subscriptionManager.updateSubscriptionStatus()
                 }
+                #if DEBUG
+                .alert(
+                    "Debug Info",
+                    isPresented: $showDebugInfoAlert
+                ) {
+                    Button("OK", role: .cancel) { }
+                } message: {
+                    Text(debugInfoMessage)
+                }
+                #endif
         }
     }
 }
@@ -964,6 +1032,9 @@ struct RootView: View {
     @State private var showOnboarding = false
     @State private var selectedTemplate: TipTemplate?
     @State private var showSubscription = false
+    #if DEBUG
+    @State private var showDebugDashboard = false
+    #endif
     
     var body: some View {
         NavigationView {
@@ -984,6 +1055,14 @@ struct RootView: View {
         } message: {
             Text("WhipTip requires an internet connection for setup and calculations. Please check your connection and try again.")
         }
+        #if DEBUG
+        .sheet(isPresented: $showDebugDashboard) {
+            DebugDashboardView()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openDebugDashboard)) { _ in
+            showDebugDashboard = true
+        }
+        #endif
     }
 
     // [fix]: Centralized binding accessor for apiService.showOfflineAlert
@@ -1017,6 +1096,12 @@ struct RootView: View {
         }
     }
 }
+
+#if DEBUG
+extension Notification.Name {
+    static let openDebugDashboard = Notification.Name("OpenDebugDashboard")
+}
+#endif
 
 // Simple credentials prompt to enter runtime API key override
 struct CredentialsView: View {
@@ -1767,6 +1852,11 @@ struct MainDashboardView: View {
             VStack(alignment: .leading) {
                 Text("WhipTip")
                     .font(.title.bold())
+                    #if DEBUG
+                    .onTapGesture(count: 3) {
+                        NotificationCenter.default.post(name: .openDebugDashboard, object: nil)
+                    }
+                    #endif
                 
                 if let template = selectedTemplate {
                     Text(template.name)
@@ -2856,18 +2946,7 @@ struct SubscriptionView: View {
             return formatter.string(from: product.price as NSDecimalNumber) ?? ""
         }
     }
-
-// MARK: - Unified Currency Formatting
-extension Double {
-    /// Localized currency string for the current locale, with optional override for `currencyCode`.
-    func currencyFormatted(locale: Locale = .current, currencyCode: String? = nil) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.locale = locale
-        if let code = currencyCode { formatter.currencyCode = code }
-        return formatter.string(from: NSNumber(value: self)) ?? String(format: "%.2f", self)
-    }
-}
+    
     
     private var featureComparisonSection: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -3030,3 +3109,42 @@ struct PieSlice: View {
 // - Check ReferralManager.hasActiveBonus() in subscription gating
 // - Add referral code redemption UI in onboarding flow
 // - Wire up inviteCoworker() action for Pro subscribers
+
+#if DEBUG
+// MARK: - Debug Dashboard (DEBUG only)
+
+@MainActor
+struct DebugDashboardView: View {
+    @AppStorage("DebugShowAPIKeyAlert") private var showAPIKeyAlert: Bool = true
+    @AppStorage("DebugVerboseAPILogging") private var verboseAPILogging: Bool = false
+    @AppStorage("DebugEnableMockData") private var enableMockData: Bool = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Developer Toggles")) {
+                    Toggle("Show API Key Alert", isOn: $showAPIKeyAlert)
+                    Toggle("Verbose API Logging", isOn: $verboseAPILogging)
+                    Toggle("Enable Mock Data", isOn: $enableMockData)
+                }
+
+                Section(header: Text("Actions"), footer: Text("These settings only exist in Debug builds.")) {
+                    Button {
+                        showAPIKeyAlert = true
+                    } label: {
+                        Label("Reset API Key Alert", systemImage: "exclamationmark.bubble")
+                    }
+                }
+            }
+            .navigationTitle("Debug Dashboard")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Close") { dismiss() }
+                }
+            }
+        }
+    }
+}
+#endif
