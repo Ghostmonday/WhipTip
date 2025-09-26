@@ -10,12 +10,26 @@ import WhipTipCore
 
 // MARK: - Unified Currency Formatting (Top-level extension)
 extension Double {
+    /// Reusable (main‑thread) currency formatter cache.
+    /// NumberFormatter isn't thread-safe; access only from main/UI contexts.
+    private static var _cachedFormatters: [String: NumberFormatter] = [:]
+    private static func formatter(locale: Locale, currencyCode: String?) -> NumberFormatter {
+        let key = locale.identifier + (currencyCode ?? "")
+        if let existing = _cachedFormatters[key] { return existing }
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.locale = locale
+        if let code = currencyCode { f.currencyCode = code }
+        _cachedFormatters[key] = f
+        return f
+    }
     /// Localized currency string for the current locale, with optional override for `currencyCode`.
     func currencyFormatted(locale: Locale = .current, currencyCode: String? = nil) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.locale = locale
-        if let code = currencyCode { formatter.currencyCode = code }
+        if !Thread.isMainThread { // Defensive: create a throwaway formatter off main thread
+            let temp = NumberFormatter(); temp.numberStyle = .currency; temp.locale = locale; if let code = currencyCode { temp.currencyCode = code }
+            return temp.string(from: NSNumber(value: self)) ?? String(format: "%.2f", self)
+        }
+        let formatter = Self.formatter(locale: locale, currencyCode: currencyCode)
         return formatter.string(from: NSNumber(value: self)) ?? String(format: "%.2f", self)
     }
 }
@@ -2461,12 +2475,17 @@ struct ExportView: View {
     
     private func exportData() {
         isExporting = true
-        
         Task {
             let content = generatePreview()
-            let fileName = "TipSplit_\(Date().timeIntervalSince1970).\(exportFormat == .csv ? "csv" : "txt")"
+            // Decide extension based on selected format (PDF placeholder for future implementation)
+            let ext: String
+            switch exportFormat {
+            case .csv: ext = "csv"
+            case .text: ext = "txt"
+            case .pdf: ext = "pdf" // TODO: Implement real PDF rendering
+            }
+            let fileName = "TipSplit_\(UInt(Date().timeIntervalSince1970)).\(ext)"
             let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-            
             do {
                 try content.write(to: url, atomically: true, encoding: .utf8)
                 await MainActor.run {
@@ -2475,9 +2494,7 @@ struct ExportView: View {
                     isExporting = false
                 }
             } catch {
-                await MainActor.run {
-                    isExporting = false
-                }
+                await MainActor.run { isExporting = false }
             }
         }
     }
