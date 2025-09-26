@@ -8,6 +8,11 @@
 
 	/* Begin PBXBuildFile section */
 			8496B8D12E7FE000005270F1 /* WhipTipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496B8D02E7FE000005270F1 /* WhipTipApp.swift */; };
+		C0TESTBUILD /* CalculationEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0TESTFILE /* CalculationEngineTests.swift */; };
+		// Removed C0APPINTEST build file (app file no longer compiled into tests)
+		COREBUILD_TipEngine /* TipEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = COREFILE_TipEngine /* TipEngine.swift */; };
+		CORELINK_APP /* libWhipTipCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = COREPROD_LIB /* libWhipTipCore.a */; };
+		CORELINK_TESTS /* libWhipTipCore.a in Frameworks (Tests) */ = {isa = PBXBuildFile; fileRef = COREPROD_LIB /* libWhipTipCore.a */; };
 
 	/* End PBXBuildFile section */
 
@@ -19,6 +24,27 @@
 			remoteGlobalIDString = 8496B8982E7FCD10005270F1;
 			remoteInfo = WhipTip;
 		};
+	C0TESTPROXY /* PBXContainerItemProxy */ = {
+		isa = PBXContainerItemProxy;
+		containerPortal = 8496B8912E7FCD0F005270F1 /* Project object */;
+		proxyType = 1;
+		remoteGlobalIDString = 8496B8982E7FCD10005270F1;
+		remoteInfo = WhipTip;
+	};
+	COREPROXY_APP /* PBXContainerItemProxy */ = {
+		isa = PBXContainerItemProxy;
+		containerPortal = 8496B8912E7FCD0F005270F1 /* Project object */;
+		proxyType = 1;
+		remoteGlobalIDString = CORE_TGT;
+		remoteInfo = WhipTipCore;
+	};
+	COREPROXY_TEST /* PBXContainerItemProxy */ = {
+		isa = PBXContainerItemProxy;
+		containerPortal = 8496B8912E7FCD0F005270F1 /* Project object */;
+		proxyType = 1;
+		remoteGlobalIDString = CORE_TGT;
+		remoteInfo = WhipTipCore;
+	};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +52,10 @@
 	8496B8D02E7FE000005270F1 /* WhipTipApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhipTipApp.swift; sourceTree = "<group>"; };
 	A1B2C3D4E5F6010000000001 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Secrets.xcconfig; path = "Configs/Secrets.xcconfig"; sourceTree = SOURCE_ROOT; };
 	A1B2C3D4E5F6010000000002 /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Secrets.example.xcconfig; path = "Configs/Secrets.example.xcconfig"; sourceTree = SOURCE_ROOT; };
+	C0TESTFILE /* CalculationEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculationEngineTests.swift; sourceTree = "<group>"; };
+	C0TESTPROD /* WhipTipTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhipTipTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+	COREFILE_TipEngine /* TipEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipEngine.swift; sourceTree = "<group>"; };
+	COREPROD_LIB /* libWhipTipCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libWhipTipCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
 
 
 /* End PBXFileReference section */
@@ -52,6 +82,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CORELINK_APP /* libWhipTipCore.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,6 +100,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+	C0TESTFRAME /* Frameworks */ = {
+		isa = PBXFrameworksBuildPhase;
+		buildActionMask = 2147483647;
+			files = (
+				CORELINK_TESTS /* libWhipTipCore.a in Frameworks (Tests) */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+	CORE_FRAME /* Frameworks */ = {
+		isa = PBXFrameworksBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -78,6 +124,8 @@
 				A1B2C3D4E5F6010000000003 /* Configs */,
 				8496B8CC2E7FD961005270F1 /* Preview Content */,
 				8496B89B2E7FCD10005270F1 /* WhipTip */,
+				COREGROUP /* WhipTipCore */,
+				C0TESTGROUP /* WhipTipTests */,
 				8496B89A2E7FCD10005270F1 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -96,10 +144,28 @@
 			isa = PBXGroup;
 			children = (
 				8496B8992E7FCD10005270F1 /* WhipTip.app */,
+				C0TESTPROD /* WhipTipTests.xctest */,
+				COREPROD_LIB /* libWhipTipCore.a */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
+	C0TESTGROUP /* WhipTipTests */ = {
+		isa = PBXGroup;
+		children = (
+			C0TESTFILE /* CalculationEngineTests.swift */,
+		);
+		path = WhipTipTests;
+		sourceTree = SOURCE_ROOT;
+	};
+	COREGROUP /* WhipTipCore */ = {
+		isa = PBXGroup;
+		children = (
+			COREFILE_TipEngine /* TipEngine.swift */,
+		);
+		path = WhipTipCore;
+		sourceTree = SOURCE_ROOT;
+	};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -110,11 +176,12 @@
 				8496B8952E7FCD10005270F1 /* Sources */,
 				8496B8962E7FCD10005270F1 /* Frameworks */,
 				8496B8972E7FCD10005270F1 /* Resources */,
-                A1B2C3D4E5F6010000001000 /* Inject DEEPSEEK_API_KEY */, 
+				A1B2C3D4E5F6010000001000 /* Inject DEEPSEEK_API_KEY */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				COREDEP_APP /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8496B89B2E7FCD10005270F1 /* WhipTip */,
@@ -127,6 +194,40 @@
 			productReference = 8496B8992E7FCD10005270F1 /* WhipTip.app */;
 			productType = "com.apple.product-type.application";
 		};
+	C0TESTTGT /* WhipTipTests */ = {
+		isa = PBXNativeTarget;
+		buildConfigurationList = C0TESTCONFLIST /* Build configuration list for PBXNativeTarget "WhipTipTests" */;
+		buildPhases = (
+			C0TESTSRC /* Sources */,
+			C0TESTFRAME /* Frameworks */,
+		);
+		buildRules = (
+		);
+			dependencies = (
+				C0TESTDEP /* PBXTargetDependency */,
+				COREDEP_TEST /* PBXTargetDependency */,
+			);
+		name = WhipTipTests;
+		productName = WhipTipTests;
+		productReference = C0TESTPROD /* WhipTipTests.xctest */;
+		productType = "com.apple.product-type.bundle.unit-test";
+	};
+	CORE_TGT /* WhipTipCore */ = {
+		isa = PBXNativeTarget;
+		buildConfigurationList = CORE_CONFLIST /* Build configuration list for PBXNativeTarget "WhipTipCore" */;
+		buildPhases = (
+			CORE_SRC /* Sources */,
+			CORE_FRAME /* Frameworks */,
+		);
+		buildRules = (
+		);
+		dependencies = (
+		);
+		name = WhipTipCore;
+		productName = WhipTipCore;
+		productReference = COREPROD_LIB /* libWhipTipCore.a */;
+		productType = "com.apple.product-type.library.static";
+	};
 	/* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -157,6 +258,8 @@
 			projectRoot = "";
 			targets = (
 				8496B8982E7FCD10005270F1 /* WhipTip */,
+				C0TESTTGT /* WhipTipTests */,
+				CORE_TGT /* WhipTipCore */,
 			);
 		};
 /* End PBXProject section */
@@ -202,12 +305,116 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+	C0TESTSRC /* Sources */ = {
+		isa = PBXSourcesBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+			C0TESTBUILD /* CalculationEngineTests.swift in Sources */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+	CORE_SRC /* Sources */ = {
+		isa = PBXSourcesBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+			COREBUILD_TipEngine /* TipEngine.swift in Sources */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+	C0TESTDEP /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 8496B8982E7FCD10005270F1 /* WhipTip */; targetProxy = C0TESTPROXY /* PBXContainerItemProxy */; };
+	COREDEP_APP /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = CORE_TGT /* WhipTipCore */; targetProxy = COREPROXY_APP /* PBXContainerItemProxy */; };
+	COREDEP_TEST /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = CORE_TGT /* WhipTipCore */; targetProxy = COREPROXY_TEST /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+	CORE_DBG /* Debug */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CODE_SIGN_STYLE = Automatic;
+			DEFINES_MODULE = YES;
+			DEVELOPMENT_TEAM = R7KX4HNBFY;
+			GENERATE_INFOPLIST_FILE = YES;
+			IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+			MACH_O_TYPE = staticlib;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			SKIP_INSTALL = YES;
+			SWIFT_VERSION = 5.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+		};
+		name = Debug;
+	};
+	CORE_REL /* Release */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CODE_SIGN_STYLE = Automatic;
+			DEFINES_MODULE = YES;
+			DEVELOPMENT_TEAM = R7KX4HNBFY;
+			GENERATE_INFOPLIST_FILE = YES;
+			IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+			MACH_O_TYPE = staticlib;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			SKIP_INSTALL = YES;
+			SWIFT_VERSION = 5.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+		};
+		name = Release;
+	};
+	C0TESTDBG /* Debug */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 1;
+			DEVELOPMENT_TEAM = R7KX4HNBFY;
+			GENERATE_INFOPLIST_FILE = YES;
+			GCC_PREPROCESSOR_DEFINITIONS = (
+				"DEBUG=1",
+				"$(inherited)",
+			);
+			IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+			LD_RUNPATH_SEARCH_PATHS = (
+				"$(inherited)",
+				"@executable_path/Frameworks",
+				"@loader_path/Frameworks",
+			);
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WhipTip.app/WhipTip";
+				BUNDLE_LOADER = "$(TEST_HOST)";
+			PRODUCT_BUNDLE_IDENTIFIER = net.neuraldraft.WhipTipTests;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+			SWIFT_VERSION = 5.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+		};
+		name = Debug;
+	};
+	C0TESTREL /* Release */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CODE_SIGN_STYLE = Automatic;
+			CURRENT_PROJECT_VERSION = 1;
+			DEVELOPMENT_TEAM = R7KX4HNBFY;
+			GENERATE_INFOPLIST_FILE = YES;
+			IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+			LD_RUNPATH_SEARCH_PATHS = (
+				"$(inherited)",
+				"@executable_path/Frameworks",
+				"@loader_path/Frameworks",
+			);
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/WhipTip.app/WhipTip";
+				BUNDLE_LOADER = "$(TEST_HOST)";
+			PRODUCT_BUNDLE_IDENTIFIER = net.neuraldraft.WhipTipTests;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			SWIFT_VERSION = 5.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+		};
+		name = Release;
+	};
 		8496B8C02E7FCD12005270F1 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -398,6 +605,24 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+	CORE_CONFLIST /* Build configuration list for PBXNativeTarget "WhipTipCore" */ = {
+		isa = XCConfigurationList;
+		buildConfigurations = (
+			CORE_DBG /* Debug */,
+			CORE_REL /* Release */,
+		);
+		defaultConfigurationIsVisible = 0;
+		defaultConfigurationName = Release;
+	};
+	C0TESTCONFLIST /* Build configuration list for PBXNativeTarget "WhipTipTests" */ = {
+		isa = XCConfigurationList;
+		buildConfigurations = (
+			C0TESTDBG /* Debug */,
+			C0TESTREL /* Release */,
+		);
+		defaultConfigurationIsVisible = 0;
+		defaultConfigurationName = Release;
+	};
 		8496B8942E7FCD10005270F1 /* Build configuration list for PBXProject "WhipTip" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
