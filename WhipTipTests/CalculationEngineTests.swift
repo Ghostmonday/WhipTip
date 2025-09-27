@@ -112,4 +112,53 @@ final class CalculationEngineTests: XCTestCase {
         XCTAssertTrue(amounts.max()! - amounts.min()! <= 1, "Distribution should be nearly equal when hours are zero")
         XCTAssertFalse(warnings.contains { $0.localizedCaseInsensitiveContains("error") })
     }
+
+    func testFairnessIntegrityDeterminismAndCentAccuracy() throws {
+        // This test stresses the fairness engine with a non-even pool and mixed rule types,
+        // asserting: (1) total cents preserved, (2) per-run determinism, (3) per-participant
+        // deviation from ideal share is <= 1 cent.
+
+        let participants: [Participant] = [
+            Participant(name: "Alice", role: "server", hours: 5, weight: nil, calculatedAmount: nil, actualAmount: nil),
+            Participant(name: "Bob", role: "server", hours: 5, weight: nil, calculatedAmount: nil, actualAmount: nil),
+            Participant(name: "Cara", role: "support", hours: 4, weight: nil, calculatedAmount: nil, actualAmount: nil),
+            Participant(name: "Dan", role: "support", hours: 4, weight: nil, calculatedAmount: nil, actualAmount: nil),
+            Participant(name: "Eve", role: "bar", hours: 6, weight: nil, calculatedAmount: nil, actualAmount: nil)
+        ]
+
+        // We'll run both equal and hoursBased to exercise two code paths; hoursBased has non-uniform hours.
+        let pools: [Double] = [123.45, 77.31]
+        let ruleTypes: [TipRules.RuleType] = [.equal, .hoursBased]
+
+        for pool in pools {
+            let totalCents = Int(round(pool * 100))
+            for rule in ruleTypes {
+                let template = buildTemplate(ruleType: rule, participants: participants)
+                var priorCents: [Int]? = nil
+                for _ in 0..<5 { // multiple runs to assert determinism
+                    let (splits, warnings) = computeSplitsCompat(template: template, pool: pool)
+                    XCTAssertTrue(warnings.isEmpty, "Unexpected warnings for rule \(rule): \(warnings)")
+                    let amounts = splits.compactMap { $0.calculatedAmount }
+                    XCTAssertEqual(amounts.count, participants.count, "Mismatch in participant count")
+                    let cents = amounts.map { Int(round($0 * 100)) }
+                    XCTAssertEqual(cents.reduce(0,+), totalCents, "Cents total mismatch for pool \(pool) rule \(rule)")
+
+                    // Check variance from ideal share (equal) or proportional share (hours).
+                    if rule == .equal {
+                        let ideal = Double(totalCents) / Double(participants.count)
+                        for c in cents { XCTAssertLessThanOrEqual(abs(Double(c) - ideal), 1.0, "Equal rule variance > 1 cent") }
+                    } else if rule == .hoursBased {
+                        let totalHours = participants.compactMap { $0.hours }.reduce(0,+)
+                        for (idx, p) in participants.enumerated() {
+                            let expected = totalHours > 0 ? (Double(totalCents) * Double(p.hours ?? 0) / Double(totalHours)) : (Double(totalCents)/Double(participants.count))
+                            XCTAssertLessThanOrEqual(abs(Double(cents[idx]) - expected), 1.0, "Hours rule variance > 1 cent for participant \(p.name)")
+                        }
+                    }
+
+                    if let prior = priorCents { XCTAssertEqual(prior, cents, "Non-deterministic distribution observed on repeat run for rule \(rule)") }
+                    priorCents = cents
+                }
+            }
+        }
+    }
 }

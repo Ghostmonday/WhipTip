@@ -148,35 +148,59 @@
 				A1B2C3D4E5F6010000001000 /* Inject DEEPSEEK_API_KEY */,
 			);
 			buildRules = (
-					// Removed WhipTipCore build files
-					// Removed WhipTipCore build files
 			);
-			fileSystemSynchronizedGroups = (
-				8496B89B2E7FCD10005270F1 /* WhipTip */,
-					// Removed WhipTipCore container item proxies
-					// Removed WhipTipCore container item proxies
-			C0TESTFRAME /* Frameworks */,
-		);
-		buildRules = (
-				// Removed WhipTipCore file references
-				// Removed WhipTipCore file references
-			C0TESTDEP /* PBXTargetDependency */,
-		);
-					// Removed WhipTipCore build phases
-					// Removed WhipTipCore build phases
-		// WhipTipCore target block fully removed previously
-	};
+			dependencies = (
+			);
+			name = WhipTip;
+			productName = WhipTip;
+			productReference = 8496B8992E7FCD10005270F1 /* WhipTip.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C0TESTTGT /* WhipTipTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0TESTCONFLIST /* Build configuration list for PBXNativeTarget "WhipTipTests" */;
+			buildPhases = (
+				C0TESTSRC /* Sources */,
+				C0TESTFRAME /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C0TESTDEP /* PBXTargetDependency */,
+			);
+			name = WhipTipTests;
+			productName = WhipTipTests;
+			productReference = C0TESTPROD /* WhipTipTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 	/* End PBXNativeTarget section */
-					// WhipTipCore native target removed
-					// WhipTipCore native target removed
+
+/* Begin PBXProject section */
+		8496B8912E7FCD0F005270F1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					8496B8982E7FCD10005270F1 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					C0TESTTGT = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = 8496B8982E7FCD10005270F1;
+					};
+				};
+			};
+			buildConfigurationList = 8496B8942E7FCD10005270F1 /* Build configuration list for PBXProject "WhipTip" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
-					// WhipTipCore target dependencies removed
-					// WhipTipCore target dependencies removed
+				Base,
+			);
 			mainGroup = 8496B8902E7FCD0F005270F1;
-			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
 			productRefGroup = 8496B89A2E7FCD10005270F1 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";

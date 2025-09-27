@@ -1,4 +1,5 @@
 // WhipTipApp.swift
+// WhipTipApp.swift
 // Monolithic Single-File Build - StoreKit 2 Integration
 
 import SwiftUI
@@ -19,7 +20,8 @@ extension Double {
         f.numberStyle = .currency
         f.locale = locale
         if let code = currencyCode { f.currencyCode = code }
-        _cachedForm.             
+        _cachedFormatters[key] = f
+        return f
     }
     /// Localized currency string for the current locale, with optional override for `currencyCode`.
     func currencyFormatted(locale: Locale = .current, currencyCode: String? = nil) -> String {
@@ -164,7 +166,7 @@ fileprivate func _allocateEqual(participants:[Participant], remainderCents:Int, 
 }
 
 fileprivate func _allocatePercentage(participants:[Participant], remainderCents:Int, rules:TipRules) -> (perID:[UUID:Int], warnings:[String]) {
-    var warnings:[String]=[]
+    let warnings:[String]=[]
     var weights:[UUID:Double]=[:]
     let roleWeightsLower = rules.roleWeights?.reduce(into:[String:Double]()) { $0[$1.key.lowercased()] = $1.value }
     for p in participants { if let w = p.weight { weights[p.id]=max(0,w) } }
@@ -688,14 +690,17 @@ class SubscriptionManager: ObservableObject {
     }
 }
 
-// MARK: - [API Service remains unchanged]
+// MARK: - [API Service]
 
+@MainActor
 class APIService: ObservableObject {
     @Published var showOfflineAlert = false
     @Published var showMissingKeyAlert = false
+    @Published var lastStatusMessage: String = "Idle"
     
     private let session: URLSession
     private let networkMonitor = NetworkMonitor()
+    private let devHardcodedKey: String = "sk-69eaf711fadb48528711d81190fb0b83" // TEMP DEV ONLY
     private let bundleAPIKey: String = Bundle.main.object(forInfoDictionaryKey: "DEEPSEEK_API_KEY") as? String ?? ""
     private let overrideUDKey = "DeepSeekAPIKeyOverride"
     private let baseURL = URL(string: "https://api.deepseek.com/v1/chat/completions")!
@@ -715,9 +720,17 @@ class APIService: ObservableObject {
     
     // Effective API key resolution: runtime override > Info.plist value
     private var effectiveAPIKey: String {
-        let override = UserDefaults.standard.string(forKey: overrideUDKey)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !override.isEmpty { return override }
-        return bundleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let override = UserDefaults.standard.string(forKey: "DeepSeekAPIKeyOverride")?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty { return override }
+        if let plistKey = Bundle.main.object(forInfoDictionaryKey: "DEEPSEEK_API_KEY") as? String,
+           !plistKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return plistKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let env = ProcessInfo.processInfo.environment["DEEPSEEK_API_KEY"],
+           !env.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return env.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return devHardcodedKey.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     // Public helpers to manage override at runtime
@@ -729,10 +742,8 @@ class APIService: ObservableObject {
     }
     
     private func checkNetworkConnection() throws {
-        if !networkMonitor.isConnected {
-            DispatchQueue.main.async {
-                self.showOfflineAlert = true
-            }
+        guard networkMonitor.isConnected else {
+            showOfflineAlert = true
             throw APIError.noInternetConnection
         }
     }
@@ -747,82 +758,109 @@ class APIService: ObservableObject {
 
     /// Unified non-stream request returning full content
     private func performChat(model: String, messages: [ChatMessageDTO]) async throws -> String {
-        try checkNetworkConnection()
-        let key = effectiveAPIKey
-        if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            await MainActor.run { self.showMissingKeyAlert = true }
-            throw APIError.missingCredentials
+        lastStatusMessage = "Sending..."
+        do {
+            try checkNetworkConnection()
+            let key = effectiveAPIKey
+            if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                showMissingKeyAlert = true
+                throw APIError.missingCredentials
+            }
+            var request = URLRequest(url: baseURL)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            let body = ChatRequestDTO(model: model, messages: messages, stream: false)
+            request.httpBody = try JSONEncoder().encode(body)
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
+                let userCount = messages.filter { $0.role == "user" }.count
+                print("[DEBUG] DeepSeek request: model=\(model), stream=false, messages=\(messages.count), userMsgs=\(userCount)")
+            }
+            #endif
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse {
+                lastStatusMessage = "HTTP \(http.statusCode)"
+                guard 200..<300 ~= http.statusCode else { throw APIError.serverError(http.statusCode) }
+            } else {
+                lastStatusMessage = "Success"
+            }
+            let decoded = try JSONDecoder().decode(ChatResponseDTO.self, from: data)
+            guard let content = decoded.choices.first?.message.content else { throw APIError.invalidResponse }
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
+                let preview = String(content.prefix(120))
+                print("[DEBUG] DeepSeek response (first 120 chars): \(preview)")
+            }
+            #endif
+            return content
+        } catch {
+            lastStatusMessage = "Error: \(error.localizedDescription)"
+            throw error
         }
-        var request = URLRequest(url: baseURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        let body = ChatRequestDTO(model: model, messages: messages, stream: false)
-        request.httpBody = try JSONEncoder().encode(body)
-        #if DEBUG
-        if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
-            let userCount = messages.filter { $0.role == "user" }.count
-            print("[DEBUG] DeepSeek request: model=\(model), stream=false, messages=\(messages.count), userMsgs=\(userCount)")
-        }
-        #endif
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
-        guard 200..<300 ~= http.statusCode else { throw APIError.serverError(http.statusCode) }
-        let decoded = try JSONDecoder().decode(ChatResponseDTO.self, from: data)
-        guard let content = decoded.choices.first?.message.content else { throw APIError.invalidResponse }
-        #if DEBUG
-        if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
-            let preview = String(content.prefix(120))
-            print("[DEBUG] DeepSeek response (first 120 chars): \(preview)")
-        }
-        #endif
-        return content
     }
 
     /// Streaming request emitting partial tokens (SSE style)
     func streamChat(model: String, messages: [ChatMessageDTO]) async throws -> AsyncStream<StreamPiece> {
-        try checkNetworkConnection()
-        let key = effectiveAPIKey
-        if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            await MainActor.run { self.showMissingKeyAlert = true }
-            throw APIError.missingCredentials
-        }
-        var request = URLRequest(url: baseURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        let body = ChatRequestDTO(model: model, messages: messages, stream: true)
-        request.httpBody = try JSONEncoder().encode(body)
-        #if DEBUG
-        if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
-            let userCount = messages.filter { $0.role == "user" }.count
-            print("[DEBUG] DeepSeek streaming request: model=\(model), stream=true, messages=\(messages.count), userMsgs=\(userCount)")
-        }
-        #endif
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { throw APIError.invalidResponse }
-        return AsyncStream { continuation in
-            let task = Task {
-                do {
-                    for try await line in bytes.lines {
-                        if Task.isCancelled { break }
-                        if line.hasPrefix("data: ") {
-                            let payload = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
-                            if payload == "[DONE]" { continuation.yield(.done); break }
-                            guard let data = payload.data(using: .utf8) else { continue }
-                            if let chunk = try? JSONDecoder().decode(ChatResponseDTO.self, from: data),
-                               let token = chunk.choices.first?.message.content, !token.isEmpty {
-                                continuation.yield(.token(token))
+        lastStatusMessage = "Sending..."
+        do {
+            try checkNetworkConnection()
+            let key = effectiveAPIKey
+            if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                showMissingKeyAlert = true
+                throw APIError.missingCredentials
+            }
+            var request = URLRequest(url: baseURL)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            let body = ChatRequestDTO(model: model, messages: messages, stream: true)
+            request.httpBody = try JSONEncoder().encode(body)
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "DebugVerboseAPILogging") {
+                let userCount = messages.filter { $0.role == "user" }.count
+                print("[DEBUG] DeepSeek streaming request: model=\(model), stream=true, messages=\(messages.count), userMsgs=\(userCount)")
+            }
+            #endif
+            let (bytes, response) = try await session.bytes(for: request)
+            if let http = response as? HTTPURLResponse {
+                lastStatusMessage = "HTTP \(http.statusCode)"
+                guard 200..<300 ~= http.statusCode else { throw APIError.serverError(http.statusCode) }
+            } else {
+                lastStatusMessage = "Success"
+            }
+            return AsyncStream { continuation in
+                let task = Task {
+                    do {
+                        for try await line in bytes.lines {
+                            if Task.isCancelled { break }
+                            if line.hasPrefix("data: ") {
+                                let payload = String(line.dropFirst(6)).trimmingCharacters(in: .whitespacesAndNewlines)
+                                if payload == "[DONE]" {
+                                    await MainActor.run { self.lastStatusMessage = "Success" }
+                                    continuation.yield(.done)
+                                    break
+                                }
+                                guard let data = payload.data(using: .utf8) else { continue }
+                                if let chunk = try? JSONDecoder().decode(ChatResponseDTO.self, from: data),
+                                   let token = chunk.choices.first?.message.content, !token.isEmpty {
+                                    continuation.yield(.token(token))
+                                }
                             }
                         }
+                        await MainActor.run { self.lastStatusMessage = "Success" }
+                        continuation.finish()
+                    } catch {
+                        await MainActor.run { self.lastStatusMessage = "Error: \(error.localizedDescription)" }
+                        if !Task.isCancelled { continuation.finish() }
                     }
-                    continuation.finish()
-                } catch {
-                    if !Task.isCancelled { continuation.finish() }
                 }
+                continuation.onTermination = { _ in task.cancel() }
             }
-            continuation.onTermination = { _ in task.cancel() }
+        } catch {
+            lastStatusMessage = "Error: \(error.localizedDescription)"
+            throw error
         }
     }
 
@@ -952,7 +990,10 @@ private struct SubscriptionManagerKey: EnvironmentKey {
 }
 
 private struct APIServiceKey: EnvironmentKey {
-    static let defaultValue = APIService()
+    @MainActor
+    static var defaultValue: APIService {
+        APIService()
+    }
 }
 
 extension EnvironmentValues {
@@ -2290,8 +2331,9 @@ struct CalculationResultView: View {
     
     private func calculateSplits() async {
         do {
+            let effectiveTemplate = HoursStore.shared.apply(to: template)
             let response = try await apiService.calculateSplit(
-                template: template,
+                template: effectiveTemplate,
                 tipPool: tipAmount
             )
             
