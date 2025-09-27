@@ -709,8 +709,10 @@ class APIService: ObservableObject {
     
     private let session: URLSession
     private let networkMonitor = NetworkMonitor()
-    private let devHardcodedKey: String = "sk-69eaf711fadb48528711d81190fb0b83" // TEMP DEV ONLY
-    private let bundleAPIKey: String = Bundle.main.object(forInfoDictionaryKey: "DEEPSEEK_API_KEY") as? String ?? ""
+    // CLEANED
+    private var bundleAPIKey: String {
+        (Bundle.main.object(forInfoDictionaryKey: "DEEPSEEK_API_KEY") as? String) ?? ""
+    }
     private let overrideUDKey = "DeepSeekAPIKeyOverride"
     private let baseURL = URL(string: "https://api.deepseek.com/v1/chat/completions")!
     
@@ -727,19 +729,22 @@ class APIService: ObservableObject {
         #endif
     }
     
-    // Effective API key resolution: runtime override > Info.plist value
+    // Effective API key resolution prioritizing Info.plist, then runtime overrides
+    // CLEANED
     private var effectiveAPIKey: String {
-        if let override = UserDefaults.standard.string(forKey: "DeepSeekAPIKeyOverride")?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !override.isEmpty { return override }
-        if let plistKey = Bundle.main.object(forInfoDictionaryKey: "DEEPSEEK_API_KEY") as? String,
-           !plistKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return plistKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let plistKey = bundleAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !plistKey.isEmpty {
+            return plistKey
         }
-        if let env = ProcessInfo.processInfo.environment["DEEPSEEK_API_KEY"],
-           !env.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return env.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let override = UserDefaults.standard.string(forKey: overrideUDKey)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !override.isEmpty {
+            return override
         }
-        return devHardcodedKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let env = ProcessInfo.processInfo.environment["DEEPSEEK_API_KEY"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !env.isEmpty {
+            return env
+        }
+        return ""
     }
     
     // Public helpers to manage override at runtime
