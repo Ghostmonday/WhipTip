@@ -454,7 +454,27 @@ final class HoursStore {
     }
 }
 
+// CLEANED
+@MainActor final class TemplateCreditsManager: ObservableObject { // CLEANED
+    @Published var credits: Int // CLEANED
+    private let key = "templateCredits" // CLEANED
+    init() { // CLEANED
+        let hasKey = UserDefaults.standard.object(forKey: key) != nil // CLEANED
+        self.credits = hasKey ? UserDefaults.standard.integer(forKey: key) : 1 // start with 1 free // CLEANED
+        if !hasKey { UserDefaults.standard.set(self.credits, forKey: key) } // CLEANED
+    } // CLEANED
+    private func persist() { UserDefaults.standard.set(credits, forKey: key) } // CLEANED
+    func addCredits(_ n: Int) { credits = max(0, credits + n); persist() } // CLEANED
+    func canConsume() -> Bool { credits > 0 } // CLEANED
+    @discardableResult func consumeIfPossible() -> Bool { // CLEANED
+        guard credits > 0 else { return false } // CLEANED
+        credits -= 1; persist(); return true // CLEANED
+    } // CLEANED
+} // CLEANED
+
 // MARK: - StoreKit 2 Subscription Manager (REPLACING MOCK)
+
+// CLEANED: Deprecated by TemplateCreditsManager — kept temporarily for safe build; scheduled for removal next pass. // CLEANED
 
 @MainActor
 class SubscriptionManager: ObservableObject {
@@ -996,6 +1016,11 @@ private struct TemplateManagerKey: EnvironmentKey {
     static let defaultValue = TemplateManager()
 }
 
+// CLEANED
+private struct CreditsManagerKey: EnvironmentKey { // CLEANED
+    @MainActor static var defaultValue = TemplateCreditsManager() // CLEANED
+} // CLEANED
+
 private struct SubscriptionManagerKey: EnvironmentKey {
     @MainActor
     static var defaultValue: SubscriptionManager = {
@@ -1015,6 +1040,11 @@ extension EnvironmentValues {
         get { self[TemplateManagerKey.self] }
         set { self[TemplateManagerKey.self] = newValue }
     }
+
+    var creditsManager: TemplateCreditsManager { // CLEANED
+        get { self[CreditsManagerKey.self] } // CLEANED
+        set { self[CreditsManagerKey.self] = newValue } // CLEANED
+    } // CLEANED
     
     var subscriptionManager: SubscriptionManager {
         get { self[SubscriptionManagerKey.self] }
@@ -1034,6 +1064,7 @@ struct WhipTipApp: App {
     @StateObject private var subscriptionManager = SubscriptionManager()
     @StateObject private var templateManager = TemplateManager()
     @StateObject private var apiService = APIService()
+    @StateObject private var creditsManager = TemplateCreditsManager() // CLEANED
     
     #if DEBUG
     @State private var showDebugInfoAlert: Bool = false
@@ -1067,8 +1098,9 @@ struct WhipTipApp: App {
         WindowGroup {
             RootView()
                 .environment(\.templateManager, templateManager)
-                .environment(\.subscriptionManager, subscriptionManager)
+                .environment(\.subscriptionManager, subscriptionManager) // CLEANED: Deprecated by TemplateCreditsManager — kept temporarily for safe build; scheduled for removal next pass. // CLEANED
                 .environment(\.apiService, apiService)
+                .environment(\.creditsManager, creditsManager) // CLEANED
                 .preferredColorScheme(.dark)
                 .task {
                     // Update subscription status on launch
@@ -1092,6 +1124,7 @@ struct WhipTipApp: App {
 // MARK: - Diagnostics Panel
 struct DiagnosticsView: View {
     @Environment(\.apiService) private var api
+    @Environment(\.creditsManager) private var creditsManager // CLEANED
     @Environment(\.subscriptionManager) private var subs
     @State private var keyPrefix: String = ""
     @State private var isConnected: Bool = true
@@ -1102,6 +1135,7 @@ struct DiagnosticsView: View {
                 VStack(alignment: .leading) {
                     Text("API Key Present: \(keyPrefix.isEmpty ? "No" : "Yes (\(keyPrefix)…)")")
                     Text("Subscription Active: \(subs.isSubscribed ? "Yes" : "No")")
+                    Text("Credits Available: \(creditsManager.credits)") // CLEANED
                     Text("Last API Status: \(api.lastStatusMessage)")
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -1134,7 +1168,7 @@ struct RootView: View {
     
     @State private var showOnboarding = false
     @State private var selectedTemplate: TipTemplate?
-    @State private var showSubscription = false
+    @State private var showCredits = false // CLEANED
     #if DEBUG
     @State private var showDebugDashboard = false
     #endif
@@ -1143,9 +1177,7 @@ struct RootView: View {
         NavigationView {
             contentView
         }
-        .sheet(isPresented: $showSubscription) {
-            SubscriptionView()
-        }
+        .sheet(isPresented: $showCredits) { CreditsView() } // CLEANED
         .sheet(isPresented: missingKeyBinding) {
             CredentialsView(isPresented: missingKeyBinding)
         }
@@ -1189,12 +1221,12 @@ struct RootView: View {
         if templateManager.templates.isEmpty && !showOnboarding {
             WelcomeView(showOnboarding: $showOnboarding)
         } else if showOnboarding {
-            OnboardingFlowView(showOnboarding: $showOnboarding)
+            OnboardingFlowView(showOnboarding: $showOnboarding, showCredits: $showCredits) // CLEANED
         } else {
             MainDashboardView(
                 selectedTemplate: $selectedTemplate,
                 showOnboarding: $showOnboarding,
-                showSubscription: $showSubscription
+                showCredits: $showCredits // CLEANED
             )
         }
     }
@@ -1302,6 +1334,8 @@ struct WelcomeView: View {
                 .font(.title3)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
+            Text("You're starting with 1 free template. Each additional template is $3.") // CLEANED
+                .font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center) // CLEANED
         }
     }
     
@@ -1361,8 +1395,10 @@ struct FeatureRow: View {
 
 struct OnboardingFlowView: View {
     @Binding var showOnboarding: Bool
+    @Binding var showCredits: Bool // CLEANED
     @Environment(\.apiService) private var apiService
     @Environment(\.templateManager) private var templateManager
+    @Environment(\.creditsManager) private var creditsManager // CLEANED
     
     @StateObject private var onboardingVM = OnboardingViewModel()
     @State private var userInput = ""
@@ -1729,11 +1765,15 @@ struct OnboardingFlowView: View {
         }
     }
     
-    private func finishOnboarding() {
-        guard let template = onboardingVM.finalTemplate else { return }
-        templateManager.saveTemplate(template)
-        showOnboarding = false
-    }
+    private func finishOnboarding() { // CLEANED
+        guard let template = onboardingVM.finalTemplate else { return } // CLEANED
+        if !creditsManager.consumeIfPossible() { // CLEANED
+            showCredits = true // CLEANED
+            return // CLEANED
+        } // CLEANED
+        templateManager.saveTemplate(template) // CLEANED
+        showOnboarding = false // CLEANED
+    } // CLEANED
 }
 
 // MARK: - [OnboardingViewModel and other supporting views remain unchanged]
@@ -1918,10 +1958,10 @@ struct ConversationBubble: View {
 struct MainDashboardView: View {
     @Binding var selectedTemplate: TipTemplate?
     @Binding var showOnboarding: Bool
-    @Binding var showSubscription: Bool
+    @Binding var showCredits: Bool // CLEANED
     
     @Environment(\.templateManager) private var templateManager
-    @Environment(\.subscriptionManager) private var subscriptionManager
+    @Environment(\.creditsManager) private var creditsManager // CLEANED
     
     @State private var showTemplateList = false
     @State private var tipAmount = ""
@@ -1975,11 +2015,16 @@ struct MainDashboardView: View {
                     .font(.title2)
             }
             
-            Button(action: { showSubscription = true }) {
-                Image(systemName: subscriptionManager.isSubscribed ? "crown.fill" : "crown")
-                    .font(.title2)
-                    .foregroundColor(subscriptionManager.isSubscribed ? .yellow : .gray)
-            }
+            Button(action: { showCredits = true }) { // CLEANED
+                HStack(spacing: 6) { // CLEANED
+                    Image(systemName: "ticket") // CLEANED
+                    Text("\(creditsManager.credits)") // CLEANED
+                } // CLEANED
+                .font(.headline) // CLEANED
+                .padding(8) // CLEANED
+                .background(Color.white.opacity(0.08)) // CLEANED
+                .cornerRadius(12) // CLEANED
+            } // CLEANED
         }
         .padding()
     }
@@ -2061,13 +2106,13 @@ struct MainDashboardView: View {
                         .cornerRadius(12)
                 }
                 
-                Button(action: {
-                    if subscriptionManager.isSubscribed || templateManager.templates.count < 1 {
-                        showOnboarding = true
-                    } else {
-                        showSubscription = true
-                    }
-                }) {
+                Button(action: { // CLEANED
+                    if creditsManager.canConsume() { // CLEANED
+                        showOnboarding = true // CLEANED
+                    } else { // CLEANED
+                        showCredits = true // CLEANED
+                    } // CLEANED
+                }) { // CLEANED
                     Label("Create New Template", systemImage: "plus.circle")
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -2081,6 +2126,40 @@ struct MainDashboardView: View {
         .padding()
     }
 }
+
+struct CreditsView: View { // CLEANED
+    @Environment(\.creditsManager) private var creditsManager // CLEANED
+    @Environment(\.dismiss) private var dismiss // CLEANED
+    @State private var status: String = "" // CLEANED
+    @State private var isBuying = false // CLEANED
+
+    var body: some View { // CLEANED
+        NavigationView { // CLEANED
+            VStack(spacing: 20) { // CLEANED
+                Text("Template Credits").font(.title2).bold() // CLEANED
+                Text("You start with 1 free template. Each additional template is $3.") // CLEANED
+                    .font(.subheadline).foregroundColor(.secondary) // CLEANED
+                Text("Credits: \(creditsManager.credits)") // CLEANED
+                Button(action: { Task { await buyOneCredit() } }) { // CLEANED
+                    if isBuying { ProgressView() } else { Text("Buy 1 Template — $3") } // CLEANED
+                } // CLEANED
+                .buttonStyle(.borderedProminent) // CLEANED
+                if !status.isEmpty { Text(status).font(.footnote).foregroundColor(.secondary) } // CLEANED
+                Spacer() // CLEANED
+            } // CLEANED
+            .padding() // CLEANED
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { dismiss() } } } // CLEANED
+        } // CLEANED
+    } // CLEANED
+
+    func buyOneCredit() async { // CLEANED
+        isBuying = true // CLEANED
+        defer { isBuying = false } // CLEANED
+        // TODO: Swap to real StoreKit 2 consumable purchase in next pass. // CLEANED
+        creditsManager.addCredits(1) // CLEANED
+        status = "Purchased 1 credit." // CLEANED
+    } // CLEANED
+} // CLEANED
 
 // MARK: - [Other UI components remain unchanged]
 // [ParticipantHoursInputView, TemplateListView, CalculationResultView, etc. remain the same]
@@ -2886,6 +2965,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 // MARK: - Subscription View (UPDATED with StoreKit 2)
 
+// CLEANED: Deprecated by TemplateCreditsManager — kept temporarily for safe build; scheduled for removal next pass. // CLEANED
 struct SubscriptionView: View {
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.dismiss) private var dismiss
