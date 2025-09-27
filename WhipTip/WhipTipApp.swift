@@ -1,6 +1,6 @@
 // WhipTipApp.swift
-// WhipTipApp.swift
 // Monolithic Single-File Build - StoreKit 2 Integration
+// CLEANED
 
 import SwiftUI
 import Combine
@@ -361,20 +361,29 @@ enum APIError: LocalizedError {
 
 extension Error { var isNetworkError: Bool { let ns = self as NSError; return ns.domain == NSURLErrorDomain || ns.domain == NSPOSIXErrorDomain } }
 
-// MARK: - [Network Monitor remains unchanged]
-
+// MARK: - Network Monitor utilities
+// CLEANED
 class NetworkMonitor: ObservableObject {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NetworkMonitor")
     @Published var isConnected = true
-    @Published var isExpensive = false
-    @Published var connectionType = NWInterface.InterfaceType.other
-    init() { monitor.pathUpdateHandler = { [weak self] path in DispatchQueue.main.async { self?.isConnected = path.status == .satisfied; self?.isExpensive = path.isExpensive; self?.connectionType = self?.getConnectionType(path) ?? .other } }; monitor.start(queue: queue) }
-    private func getConnectionType(_ path: NWPath) -> NWInterface.InterfaceType { if path.usesInterfaceType(.wifi) { return .wifi }; if path.usesInterfaceType(.cellular) { return .cellular }; if path.usesInterfaceType(.wiredEthernet) { return .wiredEthernet }; return .other }
-    deinit { monitor.cancel() }
+
+    init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                self?.isConnected = (path.status == .satisfied)
+            }
+        }
+        monitor.start(queue: queue)
+    }
+
+    deinit {
+        monitor.cancel()
+    }
 }
 
-// MARK: - Calculation engine now provided by WhipTipCore (computeSplits, etc.)
+// MARK: - Fairness-Aware Tip Split Engine (monolith)
+// CLEANED
 
 // MARK: - Template Manager [remains unchanged]
 
@@ -2804,22 +2813,22 @@ struct ExportView: View {
     }
     
     private func generateCSV() -> String {
+        // CLEANED
         var csv = "Name,Role,Amount,Percentage\n"
-            let total = tipAmount > 0 ? tipAmount : nil
-            for split in splits {
-                let amount = split.calculatedAmount ?? 0
-                let amountStr = amount.currencyFormatted()
-                let percentageStr: String
-                if let total = total, total > 0 {
-                    let pct = (amount / total) * 100
-                    percentageStr = String(format: "%.1f", pct)
-                } else {
-                    percentageStr = "0.0" // Avoid misleading 100% when total is 0
-                }
-                csv += "\(split.name),\(split.role),\(amountStr),\(percentageStr)%\n"
+        let total = tipAmount > 0 ? tipAmount : nil
+        for split in splits {
+            let amount = split.calculatedAmount ?? 0
+            let amountStr = amount.currencyFormatted()
+            let percentageStr: String
+            if let total = total, total > 0 {
+                let pct = (amount / total) * 100
+                percentageStr = String(format: "%.1f", pct)
+            } else {
+                percentageStr = "0.0" // Avoid misleading 100% when total is 0
             }
-        
-            return csv
+            csv += "\(split.name),\(split.role),\(amountStr),\(percentageStr)%\n"
+        }
+        return csv
     }
     
     private func generateText() -> String {

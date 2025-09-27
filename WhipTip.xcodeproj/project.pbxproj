@@ -10,7 +10,7 @@
 			8496B8D12E7FE000005270F1 /* WhipTipApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8496B8D02E7FE000005270F1 /* WhipTipApp.swift */; };
 		C0TESTBUILD /* CalculationEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0TESTFILE /* CalculationEngineTests.swift */; };
 		// Removed C0APPINTEST build file (app file no longer compiled into tests)
-		// WhipTipCore build files removed
+		// CLEANED: extraneous target build references removed
 
 	/* End PBXBuildFile section */
 
@@ -29,7 +29,7 @@
 		remoteGlobalIDString = 8496B8982E7FCD10005270F1;
 		remoteInfo = WhipTip;
 	};
-	// WhipTipCore proxies removed
+	// CLEANED: extraneous target proxies removed
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -39,7 +39,7 @@
 	A1B2C3D4E5F6010000000002 /* Secrets.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Secrets.example.xcconfig; path = "Configs/Secrets.example.xcconfig"; sourceTree = SOURCE_ROOT; };
 	C0TESTFILE /* CalculationEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculationEngineTests.swift; sourceTree = "<group>"; };
 	C0TESTPROD /* WhipTipTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WhipTipTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-	// WhipTipCore file references removed
+	// CLEANED: extraneous target file references removed
 
 
 /* End PBXFileReference section */
@@ -90,7 +90,7 @@
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
-	// WhipTipCore framework phase removed
+	// CLEANED: extraneous target framework phase removed
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -100,7 +100,7 @@
 				A1B2C3D4E5F6010000000003 /* Configs */,
 				8496B8CC2E7FD961005270F1 /* Preview Content */,
 				8496B89B2E7FCD10005270F1 /* WhipTip */,
-				// WhipTipCore group removed
+				// CLEANED: extraneous group reference removed
 				C0TESTGROUP /* WhipTipTests */,
 				8496B89A2E7FCD10005270F1 /* Products */,
 			);
@@ -121,7 +121,7 @@
 			children = (
 				8496B8992E7FCD10005270F1 /* WhipTip.app */,
 				C0TESTPROD /* WhipTipTests.xctest */,
-				// WhipTipCore product removed
+				// CLEANED: extraneous product reference removed
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -134,7 +134,7 @@
 		path = WhipTipTests;
 		sourceTree = SOURCE_ROOT;
 	};
-	// WhipTipCore group definition removed
+	// CLEANED: extraneous group definition removed
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -260,16 +260,16 @@
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
-	// WhipTipCore sources build phase removed
+	// CLEANED: extraneous sources build phase removed
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 	C0TESTDEP /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 8496B8982E7FCD10005270F1 /* WhipTip */; targetProxy = C0TESTPROXY /* PBXContainerItemProxy */; };
-	// WhipTipCore target dependencies removed
+	// CLEANED: extraneous target dependencies removed
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-	// WhipTipCore build configurations removed
+	// CLEANED: extraneous build configurations removed
 	C0TESTDBG /* Debug */ = {
 		isa = XCBuildConfiguration;
 		buildSettings = {
@@ -511,7 +511,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-	// WhipTipCore configuration list removed
+	// CLEANED: extraneous configuration list removed
 	C0TESTCONFLIST /* Build configuration list for PBXNativeTarget "WhipTipTests" */ = {
 		isa = XCConfigurationList;
 		buildConfigurations = (
