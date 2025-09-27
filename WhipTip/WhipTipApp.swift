@@ -6,7 +6,6 @@ import Combine
 import Network
 import UIKit
 import StoreKit  // Added for StoreKit 2
-import WhipTipCore
 
 // MARK: - Unified Currency Formatting (Top-level extension)
 extension Double {
@@ -20,8 +19,7 @@ extension Double {
         f.numberStyle = .currency
         f.locale = locale
         if let code = currencyCode { f.currencyCode = code }
-        _cachedFormatters[key] = f
-        return f
+        _cachedForm.             
     }
     /// Localized currency string for the current locale, with optional override for `currencyCode`.
     func currencyFormatted(locale: Locale = .current, currencyCode: String? = nil) -> String {
@@ -34,7 +32,290 @@ extension Double {
     }
 }
 
-// Core models now provided by WhipTipCore module.
+// MARK: - Core Models + Engine (Inlined - Monolithic)
+
+struct TipRules: Codable {
+    enum RuleType: String, Codable, CaseIterable {
+        case hoursBased = "hours"
+        case percentage = "percentage"
+        case equal = "equal"
+        case roleWeighted = "roleWeighted"
+        case hybrid = "hybrid"
+    }
+    var type: RuleType
+    var formula: String
+    var offTheTop: [OffTheTop]?
+    var roleWeights: [String: Double]?
+    var customLogic: String?
+}
+
+struct OffTheTop: Codable { var role: String; var percentage: Double }
+typealias OffTheTopRule = OffTheTop // legacy compatibility
+
+struct Participant: Identifiable, Codable {
+    var id: UUID = UUID()
+    var name: String
+    var role: String
+    var hours: Double?
+    var weight: Double?
+    var calculatedAmount: Double?
+    var emoji: String { return "👤" }
+    var color: Color { return .purple }
+}
+
+struct DisplayConfig: Codable {
+    var primaryVisualization: String
+    var accentColor: String
+    var showPercentages: Bool
+    var showComparison: Bool
+}
+
+struct TipTemplate: Identifiable, Codable {
+    var id: UUID = UUID()
+    var name: String
+    var createdDate: Date
+    var rules: TipRules
+    var participants: [Participant]
+    var displayConfig: DisplayConfig
+}
+
+struct SplitResult { var splits: [Participant]; var warnings: [String] }
+
+// MARK: Fairness-Aware Tip Split Engine (inlined from former core module)
+fileprivate enum _RoundingContext { case offTop, equal(TipRules.RuleType), percentage, hours, roleWeighted, hybrid }
+
+func computeSplits(template: TipTemplate, pool: Double) -> SplitResult {
+    var warnings: [String] = []
+    var participants = template.participants
+    guard pool >= 0 else { return SplitResult(splits: participants, warnings: ["Pool cannot be negative"]) }
+    guard !participants.isEmpty else { return SplitResult(splits: [], warnings: ["No participants"]) }
+    let poolCents = Int(round(pool * 100))
+
+    let (offTopAlloc, remainderAfterOffTop, offTopWarnings) = _allocateOffTheTop(participants: participants, poolCents: poolCents, rules: template.rules.offTheTop)
+    warnings.append(contentsOf: offTopWarnings)
+    let (mainAlloc, mainWarnings) = _allocateByRule(participants: participants, remainderCents: remainderAfterOffTop, rules: template.rules)
+    warnings.append(contentsOf: mainWarnings)
+    let final = _combineAndFixPennies(offTop: offTopAlloc, main: mainAlloc, targetTotal: poolCents, participants: participants)
+    for i in participants.indices { participants[i].calculatedAmount = Double(final[participants[i].id] ?? 0)/100.0 }
+    return SplitResult(splits: participants, warnings: warnings)
+}
+
+// MARK: Allocation helpers (all amounts in cents)
+fileprivate func _allocateOffTheTop(participants: [Participant], poolCents: Int, rules: [OffTheTopRule]?) -> (perID: [UUID:Int], remainder: Int, warnings: [String]) {
+    guard let rules = rules, !rules.isEmpty else { return ([:], poolCents, []) }
+    var warnings: [String] = []
+    let rawSum = rules.reduce(0.0) { $0 + max(0,$1.percentage) }
+    if rawSum <= 0 { return ([:], poolCents, []) }
+    var scale = 1.0
+    if rawSum > 100 { scale = 100 / rawSum; warnings.append("Off-the-top total percentage exceeded 100%; clamped.") }
+    var perID: [UUID:Int] = [:]
+    var totalAllocated = 0
+    for rule in rules {
+        let adjPct = rule.percentage * scale
+        guard adjPct > 0 else { continue }
+        let members = participants.filter { $0.role.lowercased() == rule.role.lowercased() }
+        if members.isEmpty { warnings.append("Off-the-top role \(rule.role) has no participants"); continue }
+        let target = Int(round(Double(poolCents) * adjPct / 100.0))
+        guard target > 0 else { continue }
+        let eachRaw = Double(target)/Double(members.count)
+        var base:[UUID:Int] = [:]; var rema:[UUID:Double]=[:]; var floorSum=0
+        for m in members { let f = Int(eachRaw); base[m.id]=f; floorSum+=f; rema[m.id]=eachRaw-Double(f) }
+        let remaining = target - floorSum
+        if remaining > 0 {
+            let ordered = _orderForPennyDistribution(ids: members.map{ $0.id }, remainders: rema, participants: participants, context: .offTop)
+            for i in 0..<remaining { base[ordered[i], default:0]+=1 }
+        }
+        for (k,v) in base { perID[k, default:0]+=v }
+        totalAllocated += target
+    }
+    if totalAllocated > poolCents { // clamp overflow
+        let delta = totalAllocated - poolCents
+        warnings.append("Off-the-top rounding overflow of \(delta) cents adjusted.")
+        let ordered = participants.sorted { $0.name.lowercased() < $1.name.lowercased() }.map{ $0.id }
+        var remain = delta
+        for id in ordered.reversed() where remain > 0 { if let cur = perID[id], cur > 0 { perID[id]=cur-1; remain-=1 } }
+        totalAllocated = poolCents
+    }
+    let remainder = max(0, poolCents - totalAllocated)
+    return (perID, remainder, warnings)
+}
+
+fileprivate func _allocateByRule(participants:[Participant], remainderCents:Int, rules: TipRules) -> (perID:[UUID:Int], warnings:[String]) {
+    guard remainderCents > 0 else { return ([:], []) }
+    switch rules.type {
+    case .equal: return _allocateEqual(participants: participants, remainderCents: remainderCents, ruleType: .equal)
+    case .percentage: return _allocatePercentage(participants: participants, remainderCents: remainderCents, rules: rules)
+    case .hoursBased: return _allocateHours(participants: participants, remainderCents: remainderCents)
+    case .roleWeighted: return _allocateRoleWeighted(participants: participants, remainderCents: remainderCents, rules: rules)
+    case .hybrid: return _allocateHybrid(participants: participants, remainderCents: remainderCents, rules: rules)
+    }
+}
+
+fileprivate func _allocateEqual(participants:[Participant], remainderCents:Int, ruleType: TipRules.RuleType) -> (perID:[UUID:Int], warnings:[String]) {
+    let rawEach = Double(remainderCents)/Double(participants.count)
+    var base:[UUID:Int]=[:]; var rema:[UUID:Double]=[:]; var floorSum=0
+    for p in participants { let f = Int(rawEach); base[p.id]=f; floorSum+=f; rema[p.id]=rawEach-Double(f) }
+    let remaining = remainderCents - floorSum
+    if remaining > 0 {
+        let ordered = _orderForPennyDistribution(ids: participants.map{ $0.id }, remainders: rema, participants: participants, context: .equal(ruleType))
+        for i in 0..<remaining { base[ordered[i], default:0]+=1 }
+    }
+    return (base, [])
+}
+
+fileprivate func _allocatePercentage(participants:[Participant], remainderCents:Int, rules:TipRules) -> (perID:[UUID:Int], warnings:[String]) {
+    var warnings:[String]=[]
+    var weights:[UUID:Double]=[:]
+    let roleWeightsLower = rules.roleWeights?.reduce(into:[String:Double]()) { $0[$1.key.lowercased()] = $1.value }
+    for p in participants { if let w = p.weight { weights[p.id]=max(0,w) } }
+    if weights.isEmpty, let roleWeightsLower = roleWeightsLower { for p in participants { weights[p.id] = max(0, roleWeightsLower[p.role.lowercased()] ?? 0) } }
+    if weights.isEmpty { return _allocateEqual(participants: participants, remainderCents: remainderCents, ruleType: .percentage) }
+    let total = weights.values.reduce(0,+)
+    if total <= 0 { return _allocateEqual(participants: participants, remainderCents: remainderCents, ruleType: .percentage) }
+    var raw:[UUID:Double]=[:]
+    for (id,w) in weights { raw[id] = Double(remainderCents) * (w/total) }
+    let (rounded, _) = _finalizeRounding(raw: raw, targetTotal: remainderCents, participants: participants, context: .percentage)
+    return (rounded, warnings)
+}
+
+fileprivate func _allocateHours(participants:[Participant], remainderCents:Int) -> (perID:[UUID:Int], warnings:[String]) {
+    var warnings:[String]=[]
+    var hourMap:[UUID:Double]=[:]
+    for p in participants { hourMap[p.id]=max(0,p.hours ?? 0) }
+    let totalHours = hourMap.values.reduce(0,+)
+    if totalHours <= 0 { warnings.append("Total hours were zero; fell back to equal split."); return _allocateEqual(participants: participants, remainderCents: remainderCents, ruleType: .hoursBased) }
+    var raw:[UUID:Double]=[:]
+    for (id,h) in hourMap { raw[id] = Double(remainderCents) * (h/totalHours) }
+    let (rounded, _) = _finalizeRounding(raw: raw, targetTotal: remainderCents, participants: participants, context: .hours)
+    return (rounded, warnings)
+}
+
+fileprivate func _allocateRoleWeighted(participants:[Participant], remainderCents:Int, rules:TipRules) -> (perID:[UUID:Int], warnings:[String]) {
+    var warnings:[String]=[]
+    guard let roleWeights = rules.roleWeights, !roleWeights.isEmpty else { warnings.append("No roleWeights provided for roleWeighted; fell back to equal."); return _allocateEqual(participants: participants, remainderCents: remainderCents, ruleType: .roleWeighted) }
+    let lower = roleWeights.reduce(into:[String:Double]()) { $0[$1.key.lowercased()] = max(0,$1.value) }
+    var validTotal = 0.0
+    for (role,w) in lower where w > 0 { if participants.contains(where:{ $0.role.lowercased()==role }) { validTotal += w } }
+    if validTotal <= 0 { warnings.append("All role weights invalid; fell back to equal."); return _allocateEqual(participants: participants, remainderCents: remainderCents, ruleType: .roleWeighted) }
+    var raw:[UUID:Double]=[:]
+    for (role,w) in lower where w > 0 {
+        let members = participants.filter { $0.role.lowercased()==role }
+        if members.isEmpty { continue }
+        let roleShare = Double(remainderCents) * (w/validTotal)
+        let each = roleShare / Double(members.count)
+        for m in members { raw[m.id, default:0]+=each }
+    }
+    let (rounded, _) = _finalizeRounding(raw: raw, targetTotal: remainderCents, participants: participants, context: .roleWeighted)
+    return (rounded, warnings)
+}
+
+fileprivate func _allocateHybrid(participants:[Participant], remainderCents:Int, rules:TipRules) -> (perID:[UUID:Int], warnings:[String]) {
+    var warnings:[String]=[]
+    let parsed = _parseHybridFormula(rules.formula)
+    if parsed.isEmpty { warnings.append("Hybrid formula empty or invalid; fell back to equal."); return _allocateEqual(participants: participants, remainderCents: remainderCents, ruleType: .hybrid) }
+    var valid:[(String,Double,[Participant])] = []
+    var totalPctValid = 0.0
+    for (role,pct) in parsed {
+        let members = participants.filter { $0.role.lowercased()==role }
+        if members.isEmpty { warnings.append("Hybrid role \(role) has no participants"); continue }
+        if pct > 0 { valid.append((role,pct,members)); totalPctValid += pct }
+    }
+    if totalPctValid <= 0 { warnings.append("Hybrid formula produced no valid roles; fell back to equal."); return _allocateEqual(participants: participants, remainderCents: remainderCents, ruleType: .hybrid) }
+    var raw:[UUID:Double]=[:]
+    for (_,pct,members) in valid {
+        let roleShare = Double(remainderCents) * (pct/totalPctValid)
+        let each = roleShare / Double(members.count)
+        for m in members { raw[m.id, default:0]+=each }
+    }
+    let (rounded, _) = _finalizeRounding(raw: raw, targetTotal: remainderCents, participants: participants, context: .hybrid)
+    return (rounded, warnings)
+}
+
+fileprivate func _parseHybridFormula(_ formula:String) -> [(String,Double)] {
+    formula.split(separator: ",").compactMap { pair in
+        let parts = pair.split(separator: ":"); guard parts.count == 2 else { return nil }
+        let role = parts[0].trimmingCharacters(in:.whitespacesAndNewlines).lowercased()
+        let pct = Double(parts[1].trimmingCharacters(in:.whitespacesAndNewlines)) ?? 0
+        return (role,pct)
+    }
+}
+
+// MARK: Rounding helpers
+fileprivate func _finalizeRounding(raw:[UUID:Double], targetTotal:Int, participants:[Participant], context:_RoundingContext) -> ([UUID:Int],[UUID:Double]) {
+    if raw.isEmpty { return ([:],[:]) }
+    var scaled = raw
+    let rawSum = raw.values.reduce(0,+)
+    if rawSum <= 0 { return ([:],[:]) }
+    let scale = Double(targetTotal)/rawSum
+    for (k,v) in raw { scaled[k] = v*scale }
+    var base:[UUID:Int]=[:]; var rema:[UUID:Double]=[:]; var floorSum=0
+    for (id,val) in scaled { let f = Int(val); base[id]=f; floorSum+=f; rema[id]=val-Double(f) }
+    let remaining = targetTotal - floorSum
+    if remaining > 0 {
+        let ordered = _orderForPennyDistribution(ids:Array(raw.keys), remainders: rema, participants: participants, context: context)
+        for i in 0..<remaining { base[ordered[i], default:0]+=1 }
+    }
+    return (base, rema)
+}
+
+fileprivate func _combineAndFixPennies(offTop:[UUID:Int], main:[UUID:Int], targetTotal:Int, participants:[Participant]) -> [UUID:Int] {
+    var combined = offTop
+    for (k,v) in main { combined[k, default:0]+=v }
+    let sum = combined.values.reduce(0,+)
+    if sum == targetTotal { return combined }
+    var delta = targetTotal - sum
+    if delta == 0 { return combined }
+    let ordered = participants.sorted { $0.name.lowercased() < $1.name.lowercased() }.map { $0.id }
+    if delta > 0 {
+        for id in ordered where delta > 0 { combined[id, default:0]+=1; delta -= 1 }
+    } else {
+        for id in ordered.reversed() where delta < 0 { if let cur = combined[id], cur > 0 { combined[id]=cur-1; delta += 1 } }
+    }
+    return combined
+}
+
+fileprivate func _orderForPennyDistribution(ids:[UUID], remainders:[UUID:Double], participants:[Participant], context:_RoundingContext) -> [UUID] {
+    let map = Dictionary(uniqueKeysWithValues: participants.map { ($0.id,$0) })
+    let eps = 1e-9
+    func tie(_ a:Participant,_ b:Participant) -> Bool {
+        switch context {
+        case .offTop, .equal: if a.name.lowercased() != b.name.lowercased() { return a.name.lowercased() < b.name.lowercased() }; return a.id.uuidString < b.id.uuidString
+        case .hours: let ha=a.hours ?? 0, hb=b.hours ?? 0; if abs(ha-hb) > eps { return ha > hb }; if a.name.lowercased() != b.name.lowercased() { return a.name.lowercased() < b.name.lowercased() }; return a.id.uuidString < b.id.uuidString
+        case .percentage, .roleWeighted, .hybrid: let wa=a.weight ?? 0, wb=b.weight ?? 0; if abs(wa-wb) > eps { return wa > wb }; if a.name.lowercased() != b.name.lowercased() { return a.name.lowercased() < b.name.lowercased() }; return a.id.uuidString < b.id.uuidString
+        }
+    }
+    return ids.sorted { l,r in
+        let r1 = remainders[l] ?? 0, r2 = remainders[r] ?? 0
+        if abs(r1-r2) > eps { return r1 > r2 }
+        guard let pa = map[l], let pb = map[r] else { return l.uuidString < r.uuidString }
+        return tie(pa,pb)
+    }
+}
+
+// MARK: - Minimal Helpers Reintroduced (previously from core)
+func formatTemplateJSON(_ template: TipTemplate) -> String {
+    let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted]
+    guard let data = try? enc.encode(template), let s = String(data: data, encoding: .utf8) else { return "{}" }
+    return s
+}
+
+// Lightweight CSV builder stub (replaces prior csvw variable usage)
+fileprivate func _csvEscape(_ v: String) -> String {
+    if v.contains(",") || v.contains("\n") || v.contains("\"") { return "\"" + v.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+    return v
+}
+func buildCSV(for result: SplitResult) -> String {
+    var rows: [String] = ["Name,Role,Amount"]
+    for p in result.splits { let amt = (p.calculatedAmount ?? 0).currencyFormatted(); rows.append("\(_csvEscape(p.name)),\(_csvEscape(p.role)),\(_csvEscape(amt))") }
+    return rows.joined(separator: "\n")
+}
+
+// Legacy tuple wrapper for tests expecting (splits:warnings)
+func computeSplitsCompat(template: TipTemplate, pool: Double) -> (splits: [Participant], warnings: [String]) {
+    let r = computeSplits(template: template, pool: pool)
+    return (r.splits, r.warnings)
+}
+
 
 struct OnboardingResponse: Codable {
     var status: ResponseStatus
@@ -738,6 +1019,7 @@ struct WhipTipApp: App {
                     // Update subscription status on launch
                     await subscriptionManager.updateSubscriptionStatus()
                 }
+                .modifier(DiagnosticsGestureModifier())
                 #if DEBUG
                 .alert(
                     "Debug Info",
@@ -749,6 +1031,42 @@ struct WhipTipApp: App {
                 }
                 #endif
         }
+    }
+}
+
+// MARK: - Diagnostics Panel
+struct DiagnosticsView: View {
+    @Environment(\.apiService) private var api
+    @Environment(\.subscriptionManager) private var subs
+    @State private var keyPrefix: String = ""
+    @State private var isConnected: Bool = true
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Diagnostics").font(.title.bold())
+            GroupBox(label: Label("Environment", systemImage: "gearshape")) {
+                VStack(alignment: .leading) {
+                    Text("API Key Present: \(keyPrefix.isEmpty ? "No" : "Yes (\(keyPrefix)…)")")
+                    Text("Subscription Active: \(subs.isSubscribed ? "Yes" : "No")")
+                    Text("Last API Status: \(api.lastStatusMessage)")
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Spacer()
+        }
+        .padding()
+        .onAppear {
+            let k = (Bundle.main.infoDictionary?["DEEPSEEK_API_KEY"] as? String)?.trimmingCharacters(in:.whitespacesAndNewlines) ?? ""
+            keyPrefix = String(k.prefix(6))
+        }
+    }
+}
+
+private struct DiagnosticsGestureModifier: ViewModifier {
+    @State private var showDiag = false
+    func body(content: Content) -> some View {
+        content
+            .overlay(Color.clear.contentShape(Rectangle())
+                .onTapGesture(count: 3) { showDiag = true })
+            .sheet(isPresented: $showDiag) { DiagnosticsView() }
     }
 }
 
@@ -2459,7 +2777,7 @@ struct ExportView: View {
                 csv += "\(split.name),\(split.role),\(amountStr),\(percentageStr)%\n"
             }
         
-        return csv
+            return csv
     }
     
     private func generateText() -> String {

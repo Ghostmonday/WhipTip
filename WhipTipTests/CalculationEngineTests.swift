@@ -4,7 +4,7 @@
 // As the monolith evolves, consider extracting the calculation engine into a module for direct import.
 
 import XCTest
-import WhipTipCore
+@testable import WhipTip
 
 final class CalculationEngineTests: XCTestCase {
     // Helper to build a minimal TipTemplate leveraging existing production structures.
@@ -43,7 +43,7 @@ final class CalculationEngineTests: XCTestCase {
             Participant(name: "C", role: "any", hours: nil, weight: nil, calculatedAmount: nil, actualAmount: nil)
         ]
         let template = buildTemplate(ruleType: .equal, participants: participants)
-        let (splits, warnings) = computeSplits(template: template, pool: 300)
+    let (splits, warnings) = computeSplitsCompat(template: template, pool: 300)
         XCTAssertTrue(warnings.isEmpty, "Unexpected warnings: \(warnings)")
         let amounts = splits.compactMap { $0.calculatedAmount }
         XCTAssertEqual(Set(amounts), [100.0])
@@ -53,7 +53,7 @@ final class CalculationEngineTests: XCTestCase {
     func testRoundingDistributesPenniesFairly() throws {
         let participants = ["A","B","C"].map { Participant(name: $0, role: "any", hours: nil, weight: nil, calculatedAmount: nil, actualAmount: nil) }
         let template = buildTemplate(ruleType: .equal, participants: participants)
-        let (splits, _) = computeSplits(template: template, pool: 100)
+    let (splits, _) = computeSplitsCompat(template: template, pool: 100)
         let amounts = splits.compactMap { $0.calculatedAmount }
         // Convert to cents to avoid truncation errors when casting to Int dollars.
         let cents = amounts.map { Int(round($0 * 100)) }
@@ -77,7 +77,7 @@ final class CalculationEngineTests: XCTestCase {
             OffTheTopRule(role: "busser", percentage: 70) // total 150%
         ]
         let template = buildTemplate(ruleType: .equal, participants: participants, offTop: offTop)
-        let (splits, warnings) = computeSplits(template: template, pool: 100)
+    let (splits, warnings) = computeSplitsCompat(template: template, pool: 100)
         let total = splits.compactMap { $0.calculatedAmount }.reduce(0,+)
         XCTAssertLessThanOrEqual(total, 100.0)
         XCTAssertTrue(warnings.contains { $0.localizedCaseInsensitiveContains("clamped") }, "Expected clamped warning")
@@ -89,7 +89,7 @@ final class CalculationEngineTests: XCTestCase {
             Participant(name: "B", role: "support", hours: nil, weight: nil, calculatedAmount: nil, actualAmount: nil)
         ]
         let template = buildTemplate(ruleType: .roleWeighted, participants: participants, roleWeights: ["server": 70, "support": 30])
-        let (splits, warnings) = computeSplits(template: template, pool: 100)
+    let (splits, warnings) = computeSplitsCompat(template: template, pool: 100)
         XCTAssertTrue(warnings.isEmpty, "Unexpected warnings: \(warnings)")
         let amounts = splits.compactMap { $0.calculatedAmount }
         XCTAssertEqual(amounts.reduce(0,+), 100.0)
@@ -104,7 +104,7 @@ final class CalculationEngineTests: XCTestCase {
             Participant(name: "C", role: "z", hours: 0, weight: nil, calculatedAmount: nil, actualAmount: nil)
         ]
         let template = buildTemplate(ruleType: .hoursBased, participants: participants)
-        let (splits, warnings) = computeSplits(template: template, pool: 99)
+    let (splits, warnings) = computeSplitsCompat(template: template, pool: 99)
         let amounts = splits.compactMap { $0.calculatedAmount }
         XCTAssertEqual(amounts.reduce(0,+), 99.0)
         // Acceptable distribution: 33,33,33 or 33,33,34 etc. Ensure no negative & sum integrity.
